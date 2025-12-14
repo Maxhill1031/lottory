@@ -1,520 +1,139 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>樂透開獎 V17</title>
+function doGet(e) {
+  var result = {};
+  
+  // V21: 強化偽裝，模擬真實瀏覽器行為
+  var headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://www.pilio.idv.tw/", // 騙網站說是從首頁點進來的
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache"
+  };
 
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="樂透對獎">
-  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1042/1042306.png">
+  var params = {
+    "method": "get",
+    "headers": headers,
+    "muteHttpExceptions": true // 遇到錯誤不報錯，而是回傳錯誤碼以便處理
+  };
 
-  <style>
-    /* --- 基礎設定 --- */
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Microsoft JhengHei', sans-serif; 
-      background: #f5f5f5; 
-      margin: 0; 
-      padding-top: env(safe-area-inset-top);
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
-    }
-    
-    /* 導覽列 */
-    .navbar { background: #fff; display: flex; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .nav-btn { 
-      flex: 1; padding: 15px; text-align: center; cursor: pointer; 
-      color: #666; font-weight: bold; border:none; background:none;
-      border-bottom: 3px solid transparent; transition: 0.2s; font-size:16px;
-    }
-    .nav-btn.active { color: #d32f2f; border-bottom: 3px solid #d32f2f; background: #fff5f5; }
-    
-    .container { max-width: 600px; margin: 15px auto; padding: 0 10px; }
-    .page { display: none; padding-bottom: 100px; /* 預留底部空間給按鈕 */ }
-    .page.active { display: block; animation: fadeIn 0.3s; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  function fetchHistory(url, type) {
+    var history = [];
+    try {
+      // 加亂數防止 Google 快取舊資料
+      var targetUrl = url + "?t=" + new Date().getTime(); 
+      var response = UrlFetchApp.fetch(targetUrl, params);
+      var code = response.getResponseCode();
 
-    /* 卡片與球號 */
-    .card { background: #fff; border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .card-header { display: flex; align-items: center; padding: 12px 15px; background: #fff; border-bottom: 1px solid #f0f0f0; }
-    .toggle-icon { width: 30px; height: 30px; background: #f0f0f0; color: #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-weight: bold; font-size:18px; }
-    .toggle-icon.expanded { background: #333; color: #fff; }
-    .lotto-name { font-size: 18px; font-weight: bold; flex: 1; }
-    .latest-date { font-size: 14px; color: #888; }
-    .latest-nums { padding: 15px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-    .ball { width: 38px; height: 38px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #333; font-size: 16px; }
-    .ball.special { background: #d32f2f; color: white; }
+      // 診斷 1: 如果網站回傳不是 200 (例如 403 被擋)，回傳錯誤資訊
+      if (code !== 200) {
+        return [{ date: "網站阻擋(" + code + ")", nums: [0,0,0,0,0,0], special: 0 }];
+      }
 
-    /* 歷史區域 */
-    .history-area { display: none; background: #fafafa; border-top: 1px solid #eee; padding: 5px 15px; }
-    .hist-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px; }
-    .hist-date { width: 90px; color: #666; }
-    .hist-balls { display: flex; gap: 5px; }
-    .s-ball { width: 22px; height: 22px; background: #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; }
-    .s-ball.sp { background: #ffcdd2; color: #d32f2f; font-weight: bold; }
+      var html = response.getContentText("BIG5");
+      
+      // 診斷 2: 網站可能回傳空內容或驗證頁面
+      if (html.length < 500) {
+         return [{ date: "內容異常", nums: [0,0,0,0,0,0], special: 0 }];
+      }
 
-    /* 兌獎區 */
-    .action-bar { padding: 15px; background: #fff; margin-bottom: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; }
-    .btn-open-modal { width: 100%; padding: 15px; background: #fff; border: 2px dashed #999; border-radius: 8px; color: #555; font-size: 18px; font-weight:bold; }
-    
-    .ticket-item { background: #fff; border-left: 5px solid #ddd; padding: 15px; border-radius: 5px; margin-bottom: 10px; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .ticket-header { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; color: #333; }
-    .ticket-nums { display: flex; flex-wrap: wrap; gap: 6px; margin-top:5px; }
-    .btn-remove { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; background: #eee; border-radius: 50%; text-align: center; line-height: 30px; color: #999; font-weight: bold; }
-    
-    /* 顏色標記 */
-    .border-big { border-left-color: #fbc02d; }
-    .border-power { border-left-color: #4caf50; }
-    .border-539 { border-left-color: #d32f2f; }
+      // V21: 更寬容的切割方式，適應網站微調
+      var rows = html.split(/<tr[^>]*>/i); 
 
-    /* 彈窗 */
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; justify-content: center; align-items: flex-end; }
-    .modal-content { background: #fff; width: 100%; max-width: 600px; height: 90vh; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; }
-    .modal-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-    .modal-body { flex: 1; overflow-y: auto; padding: 15px; padding-bottom: 50px; }
-    .modal-footer { padding: 15px; border-top: 1px solid #eee; text-align: center; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
-
-    /* 選號球 */
-    .ball-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 20px; }
-    .select-ball { aspect-ratio: 1; border-radius: 50%; background: #fff; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #333; font-weight: bold; }
-    .select-ball.selected { background: #d32f2f; color: white; border-color: #b71c1c; transform: scale(1.1); }
-    .select-ball.selected-sp { background: #ff9800; color: white; border-color: #f57c00; }
-
-    /* 結果展開區 */
-    .check-result-container { display: none; margin-top: 10px; border-top: 1px dashed #ddd; padding-top: 10px; background: #fafafa; border-radius: 5px; }
-    .result-row-detailed { padding: 10px; border-bottom: 1px solid #eee; }
-    .user-ball { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 1px solid #ccc; color: #555; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; margin-right: 2px; }
-    .user-ball.win { background: #d32f2f; color: white; border-color: #b71c1c; }
-    .user-ball.win-sp { background: #ff9800; color: white; border-color: #f57c00; }
-
-    .btn-confirm { width: 100%; padding: 15px; background: #2196f3; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; }
-    
-    /* V17 修正：按鈕防擋設定 */
-    .btn-check-all { 
-      width: 100%; 
-      padding: 15px; 
-      background: #d32f2f; 
-      color: white; 
-      border: none; 
-      font-size: 18px; 
-      font-weight: bold; 
-      position: fixed; 
-      bottom: 0; 
-      left: 0; 
-      z-index: 100; 
-      display: none; 
-      /* 關鍵：避開 iPhone 底部橫條 */
-      padding-bottom: calc(15px + env(safe-area-inset-bottom)); 
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-    }
-    
-    .loading { text-align: center; padding: 40px; color: #999; }
-    select { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; background: #fff; -webkit-appearance: none; }
-  </style>
-</head>
-<body>
-
-  <div class="navbar">
-    <button class="nav-btn active" onclick="switchPage('latest')" ontouchend="switchPage('latest')">最新開獎</button>
-    <button class="nav-btn" onclick="switchPage('check')" ontouchend="switchPage('check')">選號兌獎</button>
-  </div>
-
-  <div id="latest" class="page active container">
-    <div id="loading" class="loading">正在連線至資料庫...</div>
-    <div id="cards-container"></div>
-  </div>
-
-  <div id="check" class="page container">
-    <div class="action-bar">
-      <button class="btn-open-modal" onclick="openModal()" ontouchend="openModal()">
-        <span style="font-size:24px; color:#2196f3;">+</span> 加入對獎號碼
-      </button>
-    </div>
-    <div id="ticket-list" class="list-area">
-      <div style="text-align:center; color:#ccc; padding:30px;">
-        尚未加入號碼<br>請點擊上方按鈕新增
-      </div>
-    </div>
-  </div>
-
-  <div id="selector-modal" class="modal-overlay">
-    <div class="modal-content">
-      <div class="modal-header">
-        <span class="modal-title">設定對獎條件</span>
-        <button onclick="closeModal()" ontouchend="closeModal()" style="border:none; background:none; font-size:24px; padding:10px;">×</button>
-      </div>
-      <div class="modal-body">
-        <label style="display:block; margin-bottom:5px; color:#666;">1. 選擇彩種：</label>
-        <select id="lotto-type" onchange="initSelector()">
-          <option value="big">大樂透 (49選6)</option>
-          <option value="power">威力彩 (38樂合+第二區)</option>
-          <option value="539">今彩539 (39選5)</option>
-        </select>
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
         
-        <div style="display:flex; gap:10px; margin-top:10px;">
-          <div style="flex:2;">
-            <label style="display:block; margin-bottom:5px; color:#666;">2. 起始日期：</label>
-            <select id="start-date"><option>載入中...</option></select>
-          </div>
-          <div style="flex:1;">
-            <label style="display:block; margin-bottom:5px; color:#666;">3. 連續：</label>
-            <select id="check-duration">
-              <option value="1">1 期</option>
-              <option value="2">2 期</option>
-              <option value="5">5 期</option>
-              <option value="10">10 期</option>
-            </select>
-          </div>
-        </div>
+        // 抓日期: 支援 2025/12/12 或 12/12
+        var dateMatch = row.match(/(\d{2,4}\/\d{1,2}\/\d{1,2})/);
+        
+        if (dateMatch) {
+          // 清理 HTML 標籤
+          var cleanRow = row.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+          var nums = [], special = 0;
 
-        <div style="margin-top:15px; margin-bottom:10px; font-weight:bold;">4. 選擇號碼：</div>
-        <div id="zone-1" class="ball-grid"></div>
-        <div id="zone-2-wrapper" style="display:none;">
-          <div style="margin:15px 0 5px; border-top:1px dashed #ddd; padding-top:10px;">第二區：</div>
-          <div id="zone-2" class="ball-grid"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-confirm" onclick="addTicket()" ontouchend="addTicket()">確認加入清單</button>
-      </div>
-    </div>
-  </div>
+          // 抓取所有數字 (2位數)
+          var allNums = cleanRow.match(/\d{2}/g);
+          
+          if (allNums && allNums.length >= 5) {
+            if (type === "539") {
+               // 539: 找連續的5個數字
+               var m = cleanRow.match(/(\d{2}),\s*(\d{2}),\s*(\d{2}),\s*(\d{2}),\s*(\d{2})/);
+               if(m) nums = [m[1], m[2], m[3], m[4], m[5]];
+            } else {
+               // 大樂透/威力彩
+               var m = cleanRow.match(/(\d{2}),\s*(\d{2}),\s*(\d{2}),\s*(\d{2}),\s*(\d{2}),\s*(\d{2})/);
+               if(m) {
+                 nums = [m[1], m[2], m[3], m[4], m[5], m[6]];
+                 // 嘗試更聰明地抓特別號
+                 var parts = cleanRow.split(/特別號|第二區/);
+                 if(parts.length > 1) {
+                    var spMatch = parts[1].match(/\d{2}/);
+                    if(spMatch) special = parseInt(spMatch[0]);
+                 } else {
+                    // 沒抓到關鍵字，直接取最後一個數字
+                    if(allNums.length > 6) special = parseInt(allNums[allNums.length-1]);
+                 }
+               }
+            }
 
-  <button id="btn-start-check" class="btn-check-all" onclick="runCheck()" ontouchend="runCheck()">開始對獎</button>
+            if (nums.length > 0) {
+              // 補完年份 (若只有 12/12 補成 2025/12/12)
+              var dateStr = dateMatch[1];
+              if(dateStr.length <= 5) {
+                 var yearMatch = row.match(/(\d{2,3})\(/); // 找 25(五) 或 114(五)
+                 var yearPrefix = "2025"; 
+                 if(yearMatch) {
+                    var y = yearMatch[1];
+                    if(y.length === 2) yearPrefix = "20" + y;
+                    if(y.length === 3) yearPrefix = (parseInt(y) + 1911).toString();
+                 }
+                 dateStr = yearPrefix + "/" + dateStr;
+              }
 
-  <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbzrDs-l5Pr6QCmZW6Fpfy0dTAIC-5ZWriYCmPIGrFcAzNFkokA_cBJZESrWg7NgOLWB8w/exec";
-    
-    let globalData = {};
-    let currentSelection = { zone1: [], zone2: [] }; 
-    let ticketsToCheck = []; 
-
-    document.addEventListener('DOMContentLoaded', () => {
-      fetchData();
-    });
-
-    async function fetchData() {
-      try {
-        const res = await fetch(API_URL);
-        const data = await res.json();
-        globalData = data;
-        document.getElementById('loading').style.display = 'none';
-        renderLatest(data);
-      } catch (err) {
-        document.getElementById('loading').innerHTML = `<div style="color:red;">讀取失敗</div>`;
-      }
-    }
-
-    function renderLatest(data) {
-      const container = document.getElementById('cards-container');
-      container.innerHTML = "";
-      if(data.big) createCard(container, "大樂透", data.big);
-      if(data.power) createCard(container, "威力彩", data.power);
-      if(data["539"]) createCard(container, "今彩539", data["539"]);
-    }
-
-    function createCard(container, title, list) {
-      if (!list || list.length === 0) return;
-      const latest = list[0];
-      const history = list.slice(1);
-      const historyHtml = history.map(h => {
-        let balls = h.nums.map(n => `<div class="s-ball">${n}</div>`).join('');
-        if (h.special !== null) balls += `<div class="s-ball sp">${h.special}</div>`;
-        return `<div class="hist-row"><div class="hist-date">${h.date}</div><div class="hist-balls">${balls}</div></div>`;
-      }).join('');
-      let latestBalls = latest.nums.map(n => `<div class="ball">${formatNum(n)}</div>`).join('');
-      if (latest.special !== null) latestBalls += `<div class="ball special">${formatNum(latest.special)}</div>`;
-
-      const div = document.createElement('div');
-      div.className = 'card';
-      div.innerHTML = `
-        <div class="card-header">
-          <div class="toggle-icon" onclick="toggleHistory(this)" ontouchend="toggleHistory(this)">+</div>
-          <div class="lotto-name">${title}</div>
-          <div class="latest-date">${latest.date}</div>
-        </div>
-        <div class="latest-nums">${latestBalls}</div>
-        <div class="history-area">${historyHtml}</div>
-      `;
-      container.appendChild(div);
-    }
-
-    function switchPage(pageId) {
-      if(event && event.type === 'touchend') event.preventDefault();
-      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      
-      const btns = document.querySelectorAll('.nav-btn');
-      if(pageId === 'latest') btns[0].classList.add('active');
-      else btns[1].classList.add('active');
-      
-      document.getElementById(pageId).classList.add('active');
-    }
-
-    function openModal() {
-      if(event && event.type === 'touchend') event.preventDefault();
-      if(!globalData.big) { alert("資料載入中，請稍候"); return; }
-      document.getElementById('selector-modal').style.display = 'flex';
-      initSelector();
-    }
-
-    function closeModal() {
-      if(event && event.type === 'touchend') event.preventDefault();
-      document.getElementById('selector-modal').style.display = 'none';
-    }
-
-    function initSelector() {
-      const type = document.getElementById('lotto-type').value;
-      const startDateSelect = document.getElementById('start-date');
-      const zone1 = document.getElementById('zone-1');
-      const zone2 = document.getElementById('zone-2');
-      const zone2Wrapper = document.getElementById('zone-2-wrapper');
-
-      startDateSelect.innerHTML = "";
-      if(globalData[type]) {
-        globalData[type].forEach(item => {
-          let opt = document.createElement('option');
-          opt.value = item.date;
-          opt.innerText = item.date;
-          startDateSelect.appendChild(opt);
-        });
-      }
-
-      currentSelection = { zone1: [], zone2: [] };
-      zone1.innerHTML = "";
-      zone2.innerHTML = "";
-
-      let maxNum = 49;
-      let hasZone2 = false;
-      let maxZone2 = 0;
-
-      if (type === 'big') { maxNum = 49; hasZone2 = false; }
-      else if (type === '539') { maxNum = 39; hasZone2 = false; }
-      else if (type === 'power') { maxNum = 38; hasZone2 = true; maxZone2 = 8; }
-
-      for (let i = 1; i <= maxNum; i++) {
-        let btn = document.createElement('div');
-        btn.className = 'select-ball';
-        btn.innerText = i;
-        btn.onclick = (e) => { e.stopPropagation(); toggleNum(i, 'zone1', btn, type); };
-        zone1.appendChild(btn);
-      }
-      if (hasZone2) {
-        zone2Wrapper.style.display = 'block';
-        for (let i = 1; i <= maxZone2; i++) {
-          let btn = document.createElement('div');
-          btn.className = 'select-ball';
-          btn.innerText = i;
-          btn.onclick = (e) => { e.stopPropagation(); toggleNum(i, 'zone2', btn, type); };
-          zone2.appendChild(btn);
-        }
-      } else {
-        zone2Wrapper.style.display = 'none';
-      }
-    }
-
-    function toggleNum(num, zone, el, type) {
-      const list = currentSelection[zone];
-      const index = list.indexOf(num);
-      let limit = 6;
-      if (type === '539') limit = 5;
-      if (zone === 'zone2') limit = 1;
-
-      if (index > -1) {
-        list.splice(index, 1);
-        el.classList.remove(zone === 'zone2' ? 'selected-sp' : 'selected');
-      } else {
-        if (list.length >= limit) {
-          const oldNum = list.shift(); 
-          const parent = el.parentNode;
-          for(let child of parent.children) {
-             if(parseInt(child.innerText) === oldNum) child.classList.remove(zone === 'zone2' ? 'selected-sp' : 'selected');
+              history.push({
+                date: dateStr,
+                nums: nums.map(Number),
+                special: (type === "539") ? null : special
+              });
+            }
           }
         }
-        list.push(num);
-        el.classList.add(zone === 'zone2' ? 'selected-sp' : 'selected');
+        if (history.length >= 20) break;
       }
+    } catch (e) {
+      return [{ date: "程式錯誤", nums: [], special: 0, error: e.toString() }];
     }
+    
+    if(history.length === 0) return [{ date: "無資料", nums: [0,0,0,0,0,0], special: 0 }];
+    return history;
+  }
 
-    function addTicket() {
-      if(event && event.type === 'touchend') event.preventDefault();
-      const type = document.getElementById('lotto-type').value;
-      const startDate = document.getElementById('start-date').value;
-      const duration = parseInt(document.getElementById('check-duration').value);
-      const { zone1, zone2 } = currentSelection;
-      
-      let req1 = 6;
-      if (type === '539') req1 = 5;
-      
-      if (zone1.length < req1) { alert(`請選滿 ${req1} 個號碼`); return; }
-      if (type === 'power' && zone2.length < 1) { alert("請選擇第二區號碼"); return; }
+  result["big"] = fetchHistory("https://www.pilio.idv.tw/ltobig/list.asp", "big");
+  result["power"] = fetchHistory("https://www.pilio.idv.tw/lto/list.asp", "power");
+  result["539"] = fetchHistory("https://www.pilio.idv.tw/lto539/list.asp", "539");
 
-      const ticketId = Date.now();
-      ticketsToCheck.push({
-        id: ticketId,
-        type: type,
-        startDate: startDate,
-        duration: duration,
-        nums: [...zone1].sort((a,b)=>a-b),
-        special: zone2.length > 0 ? zone2[0] : null
-      });
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
-      renderTicketList();
-      closeModal();
-    }
-
-    function removeTicket(id) {
-      if(event && event.type === 'touchend') event.preventDefault();
-      ticketsToCheck = ticketsToCheck.filter(t => t.id !== id);
-      renderTicketList();
-    }
-
-    function renderTicketList() {
-      const container = document.getElementById('ticket-list');
-      const btnCheck = document.getElementById('btn-start-check');
-      container.innerHTML = "";
-
-      if (ticketsToCheck.length > 0) {
-        btnCheck.style.display = 'block';
-        ticketsToCheck.forEach(t => {
-          let typeName = t.type === 'big' ? '大樂透' : (t.type === 'power' ? '威力彩' : '今彩539');
-          let typeClass = 'border-' + t.type;
-          
-          let numsHtml = t.nums.map(n => `<span class="user-ball" style="border:none; background:#eee;">${formatNum(n)}</span>`).join('');
-          if (t.special) numsHtml += `<span class="user-ball" style="background:#d32f2f; color:white;">${t.special}</span>`;
-          
-          container.innerHTML += `
-            <div class="ticket-item ${typeClass}" id="ticket-${t.id}">
-              <div class="ticket-header">
-                <span>${typeName}</span>
-                <div class="btn-remove" onclick="removeTicket(${t.id})" ontouchend="removeTicket(${t.id})">×</div>
-              </div>
-              <div style="font-size:12px; color:#888; margin-bottom:5px;">
-                起始: ${t.startDate} | 連續 ${t.duration} 期
-              </div>
-              <div class="ticket-nums">${numsHtml}</div>
-              
-              <div class="result-summary" style="margin-top:10px; font-weight:bold; color:#999; font-size:14px;">尚未兌獎</div>
-              <div class="check-result-container" id="result-${t.id}"></div>
-              <button class="toggle-result-btn" style="width:100%; margin-top:5px; padding:5px; background:#eee; border:none; display:none;" onclick="toggleResult(${t.id}, this)" ontouchend="toggleResult(${t.id}, this)">▼ 展開結果</button>
-            </div>
-          `;
-        });
-      } else {
-        btnCheck.style.display = 'none';
-        container.innerHTML = `<div style="text-align:center; color:#ccc; padding:30px;">尚未加入號碼<br>請點擊上方按鈕新增</div>`;
-      }
-    }
-
-    function runCheck() {
-      if(event && event.type === 'touchend') event.preventDefault();
-      if (!globalData.big) return;
-
-      ticketsToCheck.forEach(t => {
-        const dataList = globalData[t.type];
-        let startIndex = dataList.findIndex(d => d.date === t.startDate);
-        if (startIndex === -1) {
-           document.querySelector(`#ticket-${t.id} .result-summary`).innerText = "錯誤：找不到起始日期";
-           return;
-        }
-
-        let resultsHTML = "";
-        let winCount = 0;
-
-        for (let i = 0; i < t.duration; i++) {
-          let targetIndex = startIndex - i;
-          if (targetIndex < 0) break;
-
-          const draw = dataList[targetIndex];
-          const targetNums = draw.nums;
-          const targetSpecial = draw.special;
-          
-          let matchCount = 0;
-          let spMatch = false;
-
-          let drawNumsStr = targetNums.map(n => formatNum(n)).join(" ");
-          if (targetSpecial !== null) drawNumsStr += ` + <span style="color:#d32f2f">${formatNum(targetSpecial)}</span>`;
-
-          let userBallsHtml = t.nums.map(n => {
-            let isWin = targetNums.includes(n);
-            if (isWin) matchCount++;
-            let winClass = isWin ? "win" : "";
-            if (t.type === 'big' && n === targetSpecial) { winClass = "win-sp"; matchCount += 0.5; }
-            return `<div class="user-ball ${winClass}">${formatNum(n)}</div>`;
-          }).join('');
-
-          if (t.type === 'power') {
-             if (t.special === targetSpecial) {
-               spMatch = true;
-               userBallsHtml += `<div class="user-ball win-sp">${formatNum(t.special)}</div>`;
-             } else {
-               userBallsHtml += `<div class="user-ball" style="border:1px dashed #999;">${formatNum(t.special)}</div>`;
-             }
-          }
-
-          let isWinTotal = (matchCount >= 3 || spMatch);
-          if(isWinTotal) winCount++;
-
-          resultsHTML += `
-            <div class="result-row-detailed">
-              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                <span style="font-weight:bold; color:#333;">${draw.date}</span>
-                <span style="color:#d32f2f; font-weight:bold;">${isWinTotal ? '中獎' : ''}</span>
-              </div>
-              <div style="font-size:12px; color:#555; margin-bottom:5px;">開出: <span style="font-family:monospace;">${drawNumsStr}</span></div>
-              <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center;">
-                <span style="font-size:12px; color:#555;">選號:</span>
-                ${userBallsHtml}
-              </div>
-            </div>
-          `;
-        }
-
-        const ticketEl = document.getElementById(`ticket-${t.id}`);
-        ticketEl.querySelector('.result-summary').innerText = `共對 ${t.duration} 期，其中 ${winCount} 期中獎`;
-        ticketEl.querySelector('.result-summary').style.color = winCount > 0 ? "#d32f2f" : "#333";
-        
-        const container = document.getElementById(`result-${t.id}`);
-        container.innerHTML = resultsHTML;
-        
-        const btn = ticketEl.querySelector('.toggle-result-btn');
-        btn.style.display = 'block';
-        btn.innerHTML = '▼ 展開詳細結果';
-        container.style.display = 'none';
-      });
-      
-      alert("對獎完成！");
-    }
-
-    function toggleResult(id, btn) {
-      if(event && event.type === 'touchend') event.preventDefault();
-      const container = document.getElementById(`result-${id}`);
-      if (container.style.display === 'block') {
-        container.style.display = 'none';
-        btn.innerHTML = '▼ 展開詳細結果';
-      } else {
-        container.style.display = 'block';
-        btn.innerHTML = '▲ 收起詳細結果';
-      }
-    }
-
-    function toggleHistory(btn) {
-      if(event && event.type === 'touchend') event.preventDefault();
-      const card = btn.closest('.card');
-      const area = card.querySelector('.history-area');
-      if (area.style.display === 'block') {
-        area.style.display = 'none';
-        btn.textContent = '+';
-        btn.classList.remove('expanded');
-      } else {
-        area.style.display = 'block';
-        btn.textContent = '-';
-        btn.classList.add('expanded');
-      }
-    }
-
-    function formatNum(n) { return n < 10 ? '0' + Number(n) : n; }
-  </script>
-</body>
-</html>
+// ★★★ 除錯專用函式 ★★★
+// 如果 App 還是讀取失敗，請在編輯器上方選擇「debugLottery」並按下「執行」
+// 查看下方的「執行記錄」，告訴我它顯示了什麼錯誤
+function debugLottery() {
+  var url = "https://www.pilio.idv.tw/ltobig/list.asp";
+  var params = {
+    "method": "get",
+    "headers": { 
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Referer": "https://www.pilio.idv.tw/"
+    },
+    "muteHttpExceptions": true
+  };
+  try {
+    var response = UrlFetchApp.fetch(url, params);
+    console.log("狀態碼: " + response.getResponseCode()); // 應該是 200
+    console.log("內容長度: " + response.getContentText("BIG5").length);
+  } catch(e) {
+    console.log("連線失敗: " + e.toString());
+  }
+}
