@@ -1,107 +1,427 @@
-function doGet(e) {
-  var result = {};
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>樂透開獎 V18</title>
 
-  // ★ 核心偽裝技術：完整的瀏覽器標頭 ★
-  // 這會讓伺服器以為請求來自一台真實的電腦，而不是 Google 的伺服器
-  var headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Cache-Control": "max-age=0"
-  };
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="樂透對獎">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1042/1042306.png">
 
-  var params = {
-    "method": "get",
-    "headers": headers,
-    "muteHttpExceptions": true // 遇到錯誤不要直接掛掉，讓我們有機會處理
-  };
+  <style>
+    /* --- 基礎設定 --- */
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Microsoft JhengHei', sans-serif; 
+      background: #f5f5f5; 
+      margin: 0; 
+      padding-top: env(safe-area-inset-top);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    
+    /* 導覽列 */
+    .navbar { background: #fff; display: flex; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .nav-btn { 
+      flex: 1; padding: 15px; text-align: center; cursor: pointer; 
+      color: #666; font-weight: bold; border:none; background:none;
+      border-bottom: 3px solid transparent; transition: 0.2s; font-size:16px;
+    }
+    .nav-btn.active { color: #d32f2f; border-bottom: 3px solid #d32f2f; background: #fff5f5; }
+    
+    .container { max-width: 600px; margin: 15px auto; padding: 0 10px; }
+    .page { display: none; padding-bottom: 100px; }
+    .page.active { display: block; animation: fadeIn 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-  // 通用抓取函式 (使用目前最穩定的樂透雲來源)
-  function fetchLotteryData(url, type) {
-    var history = [];
-    try {
-      // 技巧：網址加上隨機亂數 (Math.random)，強制讀取最新資料，不讀快取
-      var targetUrl = url + "?" + Math.floor(Math.random() * 99999);
-      
-      // 送出偽裝後的請求
-      var response = UrlFetchApp.fetch(targetUrl, params);
-      
-      // 檢查對方是否給了 200 OK
-      if (response.getResponseCode() !== 200) {
-        return [{ date: "來源忙碌中", nums: [0,0,0,0,0,0], special: 0 }];
-      }
+    /* 卡片與球號 */
+    .card { background: #fff; border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .card-header { display: flex; align-items: center; padding: 12px 15px; background: #fff; border-bottom: 1px solid #f0f0f0; }
+    .toggle-icon { width: 30px; height: 30px; background: #f0f0f0; color: #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-weight: bold; font-size:18px; }
+    .toggle-icon.expanded { background: #333; color: #fff; }
+    .lotto-name { font-size: 18px; font-weight: bold; flex: 1; }
+    .latest-date { font-size: 14px; color: #888; }
+    .latest-nums { padding: 15px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .ball { width: 38px; height: 38px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #333; font-size: 16px; }
+    .ball.special { background: #d32f2f; color: white; }
 
-      var html = response.getContentText("UTF-8");
-      
-      // 開始解析 HTML (針對樂透雲結構)
-      var rows = html.split(/<tr[^>]*>/i);
+    /* 歷史區域 */
+    .history-area { display: none; background: #fafafa; border-top: 1px solid #eee; padding: 5px 15px; }
+    .hist-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+    .hist-date { width: 90px; color: #666; font-weight:bold; }
+    .hist-balls { display: flex; gap: 6px; }
+    .s-ball { width: 24px; height: 24px; background: #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight:bold; }
+    .s-ball.sp { background: #ffcdd2; color: #d32f2f; }
 
-      for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
+    /* 兌獎區 */
+    .action-bar { padding: 15px; background: #fff; margin-bottom: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; }
+    .btn-open-modal { width: 100%; padding: 15px; background: #fff; border: 2px dashed #999; border-radius: 8px; color: #555; font-size: 18px; font-weight:bold; }
+    
+    /* V18 清單字體放大區 */
+    .ticket-item { background: #fff; border-left: 6px solid #ddd; padding: 18px; border-radius: 8px; margin-bottom: 12px; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.08); }
+    .ticket-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: bold; color: #333; font-size: 18px; /* 標題變大 */ }
+    .ticket-meta { font-size: 15px; /* 日期變大 */ color: #666; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
+    .badge-period { background: #ffebee; color: #d32f2f; padding: 4px 8px; border-radius: 4px; font-size: 13px; font-weight: bold; }
+    .ticket-nums { display: flex; flex-wrap: wrap; gap: 8px; /* 間距變大 */ margin-top:5px; }
+    
+    .btn-remove { position: absolute; top: 15px; right: 15px; width: 32px; height: 32px; background: #eee; border-radius: 50%; text-align: center; line-height: 32px; color: #999; font-weight: bold; font-size: 18px; }
+    
+    /* 顏色標記 */
+    .border-big { border-left-color: #fbc02d; }
+    .border-power { border-left-color: #4caf50; }
+    .border-539 { border-left-color: #d32f2f; }
+
+    /* 彈窗 */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; justify-content: center; align-items: flex-end; }
+    .modal-content { background: #fff; width: 100%; max-width: 600px; height: 90vh; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; }
+    .modal-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .modal-body { flex: 1; overflow-y: auto; padding: 15px; padding-bottom: 50px; }
+    .modal-footer { padding: 15px; border-top: 1px solid #eee; text-align: center; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+
+    /* 選號球 */
+    .ball-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 20px; }
+    .select-ball { aspect-ratio: 1; border-radius: 50%; background: #fff; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #333; font-weight: bold; }
+    .select-ball.selected { background: #d32f2f; color: white; border-color: #b71c1c; transform: scale(1.1); }
+    .select-ball.selected-sp { background: #ff9800; color: white; border-color: #f57c00; }
+
+    /* V18 結果球與文字放大 */
+    .check-result-container { display: none; margin-top: 15px; border-top: 1px dashed #ddd; padding-top: 15px; background: #fafafa; border-radius: 5px; }
+    .result-row-detailed { padding: 12px; border-bottom: 1px solid #eee; font-size: 15px; }
+    
+    /* 清單中的球 (放大版) */
+    .user-ball { 
+      width: 34px; height: 34px; /* 變大 */
+      border-radius: 50%; background: #fff; border: 1px solid #ccc; color: #555; 
+      display: flex; align-items: center; justify-content: center; 
+      font-weight: bold; font-size: 16px; /* 字變大 */
+      margin-right: 2px; 
+    }
+    .user-ball.win { background: #d32f2f; color: white; border-color: #b71c1c; }
+    .user-ball.win-sp { background: #ff9800; color: white; border-color: #f57c00; }
+
+    .btn-confirm { width: 100%; padding: 15px; background: #2196f3; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; }
+    
+    .btn-check-all { 
+      width: 100%; 
+      padding: 15px; 
+      background: #d32f2f; 
+      color: white; 
+      border: none; 
+      font-size: 20px; /* 按鈕字也變大 */
+      font-weight: bold; 
+      position: fixed; 
+      bottom: 0; 
+      left: 0; 
+      z-index: 100; 
+      display: none; 
+      padding-bottom: calc(15px + env(safe-area-inset-bottom)); 
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .loading { text-align: center; padding: 40px; color: #999; }
+    select { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; background: #fff; -webkit-appearance: none; }
+  </style>
+</head>
+<body>
+
+  <div class="navbar">
+    <button class="nav-btn active" onclick="switchPage('latest')" ontouchend="switchPage('latest')">最新開獎</button>
+    <button class="nav-btn" onclick="switchPage('check')" ontouchend="switchPage('check')">選號兌獎</button>
+  </div>
+
+  <div id="latest" class="page active container">
+    <div id="loading" class="loading">正在連線至資料庫...</div>
+    <div id="cards-container"></div>
+  </div>
+
+  <div id="check" class="page container">
+    <div class="action-bar">
+      <button class="btn-open-modal" onclick="openModal()" ontouchend="openModal()">
+        <span style="font-size:24px; color:#2196f3;">+</span> 加入對獎號碼
+      </button>
+    </div>
+    <div id="ticket-list" class="list-area">
+      <div style="text-align:center; color:#ccc; padding:30px;">
+        尚未加入號碼<br>請點擊上方按鈕新增
+      </div>
+    </div>
+  </div>
+
+  <div id="selector-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">設定對獎條件</span>
+        <button onclick="closeModal()" ontouchend="closeModal()" style="border:none; background:none; font-size:24px; padding:10px;">×</button>
+      </div>
+      <div class="modal-body">
+        <label style="display:block; margin-bottom:5px; color:#666;">1. 選擇彩種：</label>
+        <select id="lotto-type" onchange="initSelector()">
+          <option value="big">大樂透 (49選6)</option>
+          <option value="power">威力彩 (38樂合+第二區)</option>
+          <option value="539">今彩539 (39選5)</option>
+        </select>
         
-        // 抓日期 (格式 YYYY/MM/DD)
-        var dateMatch = row.match(/(\d{4}\/\d{1,2}\/\d{1,2})/);
-        
-        if (dateMatch) {
-          var dateStr = dateMatch[1];
-          // 清理雜訊，只留數字
-          var cleanRow = row.replace(/<[^>]*>/g, ",").replace(/\s+/g, ""); 
-          // 截取日期之後的內容來找號碼
-          var rowBody = cleanRow.split(dateStr)[1] || "";
-          var numsAll = rowBody.match(/\d{2}/g);
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <div style="flex:2;">
+            <label style="display:block; margin-bottom:5px; color:#666;">2. 起始日期：</label>
+            <select id="start-date"><option>載入中...</option></select>
+          </div>
+          <div style="flex:1;">
+            <label style="display:block; margin-bottom:5px; color:#666;">3. 連續：</label>
+            <select id="check-duration">
+              <option value="1">1 期</option>
+              <option value="2">2 期</option>
+              <option value="5">5 期</option>
+              <option value="10">10 期</option>
+            </select>
+          </div>
+        </div>
 
-          if (numsAll && numsAll.length >= 5) {
-            var nums = [];
-            var special = 0;
+        <div style="margin-top:15px; margin-bottom:10px; font-weight:bold;">4. 選擇號碼：</div>
+        <div id="zone-1" class="ball-grid"></div>
+        <div id="zone-2-wrapper" style="display:none;">
+          <div style="margin:15px 0 5px; border-top:1px dashed #ddd; padding-top:10px;">第二區：</div>
+          <div id="zone-2" class="ball-grid"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-confirm" onclick="addTicket()" ontouchend="addTicket()">確認加入清單</button>
+      </div>
+    </div>
+  </div>
 
-            if (type === "539") {
-              if(numsAll.length >= 5) nums = numsAll.slice(0, 5).map(Number).sort(function(a,b){return a-b});
-            } else if (type === "power") {
-              if(numsAll.length >= 7) {
-                nums = numsAll.slice(0, 6).map(Number).sort(function(a,b){return a-b});
-                special = parseInt(numsAll[6]);
-              }
-            } else { // 大樂透
-              if(numsAll.length >= 7) {
-                nums = numsAll.slice(0, 6).map(Number).sort(function(a,b){return a-b});
-                special = parseInt(numsAll[6]);
-              }
-            }
+  <button id="btn-start-check" class="btn-check-all" onclick="runCheck()" ontouchend="runCheck()">開始對獎</button>
 
-            if (nums.length > 0) {
-              history.push({
-                date: dateStr,
-                nums: nums,
-                special: (type === "539") ? null : special
-              });
-            }
-          }
-        }
-        if (history.length >= 25) break; // 抓最近 25 期
+  <script>
+    // 這裡請確認您的 Google Script 網址是否正確
+    const API_URL = "https://script.google.com/macros/s/AKfycbzrDs-l5Pr6QCmZW6Fpfy0dTAIC-5ZWriYCmPIGrFcAzNFkokA_cBJZESrWg7NgOLWB8w/exec";
+    
+    let globalData = {};
+    let currentSelection = { zone1: [], zone2: [] }; 
+    let ticketsToCheck = []; 
+
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchData();
+    });
+
+    async function fetchData() {
+      try {
+        const res = await fetch(API_URL);
+        const data = await res.json();
+        globalData = data;
+        document.getElementById('loading').style.display = 'none';
+        renderLatest(data);
+      } catch (err) {
+        document.getElementById('loading').innerHTML = `<div style="color:red;">讀取失敗</div>`;
       }
-    } catch (e) {
-      return [{ date: "讀取錯誤", nums: [], special: 0, error: e.toString() }];
     }
 
-    if(history.length === 0) return [{ date: "查無資料", nums: [0,0,0,0,0,0], special: 0 }];
-    return history;
-  }
+    function renderLatest(data) {
+      const container = document.getElementById('cards-container');
+      container.innerHTML = "";
+      if(data.big) createCard(container, "大樂透", data.big);
+      if(data.power) createCard(container, "威力彩", data.power);
+      if(data["539"]) createCard(container, "今彩539", data["539"]);
+    }
 
-  // 設定來源 (樂透雲目前最穩定，且配合上述 Header 可完美偽裝)
-  // 為每個請求加上特定的 Referer，增加真實度
-  headers["Referer"] = "https://lotto.arclink.com.tw/";
-  
-  result["big"] = fetchLotteryData("https://lotto.arclink.com.tw/Lotto649.html", "big");
-  result["power"] = fetchLotteryData("https://lotto.arclink.com.tw/SuperLotto638.html", "power");
-  result["539"] = fetchLotteryData("https://lotto.arclink.com.tw/Lotto539.html", "539");
+    function createCard(container, title, list) {
+      if (!list || list.length === 0) return;
+      const latest = list[0];
+      const history = list.slice(1);
+      const historyHtml = history.map(h => {
+        let balls = h.nums.map(n => `<div class="s-ball">${n}</div>`).join('');
+        if (h.special !== null) balls += `<div class="s-ball sp">${h.special}</div>`;
+        return `<div class="hist-row"><div class="hist-date">${h.date}</div><div class="hist-balls">${balls}</div></div>`;
+      }).join('');
+      let latestBalls = latest.nums.map(n => `<div class="ball">${formatNum(n)}</div>`).join('');
+      if (latest.special !== null) latestBalls += `<div class="ball special">${formatNum(latest.special)}</div>`;
 
-  return ContentService.createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `
+        <div class="card-header">
+          <div class="toggle-icon" onclick="toggleHistory(this)" ontouchend="toggleHistory(this)">+</div>
+          <div class="lotto-name">${title}</div>
+          <div class="latest-date">${latest.date}</div>
+        </div>
+        <div class="latest-nums">${latestBalls}</div>
+        <div class="history-area">${historyHtml}</div>
+      `;
+      container.appendChild(div);
+    }
+
+    function switchPage(pageId) {
+      if(event && event.type === 'touchend') event.preventDefault();
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      
+      const btns = document.querySelectorAll('.nav-btn');
+      if(pageId === 'latest') btns[0].classList.add('active');
+      else btns[1].classList.add('active');
+      
+      document.getElementById(pageId).classList.add('active');
+    }
+
+    function openModal() {
+      if(event && event.type === 'touchend') event.preventDefault();
+      if(!globalData.big) { alert("資料載入中，請稍候"); return; }
+      document.getElementById('selector-modal').style.display = 'flex';
+      initSelector();
+    }
+
+    function closeModal() {
+      if(event && event.type === 'touchend') event.preventDefault();
+      document.getElementById('selector-modal').style.display = 'none';
+    }
+
+    function initSelector() {
+      const type = document.getElementById('lotto-type').value;
+      const startDateSelect = document.getElementById('start-date');
+      const zone1 = document.getElementById('zone-1');
+      const zone2 = document.getElementById('zone-2');
+      const zone2Wrapper = document.getElementById('zone-2-wrapper');
+
+      startDateSelect.innerHTML = "";
+      if(globalData[type]) {
+        globalData[type].forEach(item => {
+          let opt = document.createElement('option');
+          opt.value = item.date;
+          opt.innerText = item.date;
+          startDateSelect.appendChild(opt);
+        });
+      }
+
+      currentSelection = { zone1: [], zone2: [] };
+      zone1.innerHTML = "";
+      zone2.innerHTML = "";
+
+      let maxNum = 49;
+      let hasZone2 = false;
+      let maxZone2 = 0;
+
+      if (type === 'big') { maxNum = 49; hasZone2 = false; }
+      else if (type === '539') { maxNum = 39; hasZone2 = false; }
+      else if (type === 'power') { maxNum = 38; hasZone2 = true; maxZone2 = 8; }
+
+      for (let i = 1; i <= maxNum; i++) {
+        let btn = document.createElement('div');
+        btn.className = 'select-ball';
+        btn.innerText = i;
+        btn.onclick = (e) => { e.stopPropagation(); toggleNum(i, 'zone1', btn, type); };
+        zone1.appendChild(btn);
+      }
+      if (hasZone2) {
+        zone2Wrapper.style.display = 'block';
+        for (let i = 1; i <= maxZone2; i++) {
+          let btn = document.createElement('div');
+          btn.className = 'select-ball';
+          btn.innerText = i;
+          btn.onclick = (e) => { e.stopPropagation(); toggleNum(i, 'zone2', btn, type); };
+          zone2.appendChild(btn);
+        }
+      } else {
+        zone2Wrapper.style.display = 'none';
+      }
+    }
+
+    function toggleNum(num, zone, el, type) {
+      const list = currentSelection[zone];
+      const index = list.indexOf(num);
+      let limit = 6;
+      if (type === '539') limit = 5;
+      if (zone === 'zone2') limit = 1;
+
+      if (index > -1) {
+        list.splice(index, 1);
+        el.classList.remove(zone === 'zone2' ? 'selected-sp' : 'selected');
+      } else {
+        if (list.length >= limit) {
+          const oldNum = list.shift(); 
+          const parent = el.parentNode;
+          for(let child of parent.children) {
+             if(parseInt(child.innerText) === oldNum) child.classList.remove(zone === 'zone2' ? 'selected-sp' : 'selected');
+          }
+        }
+        list.push(num);
+        el.classList.add(zone === 'zone2' ? 'selected-sp' : 'selected');
+      }
+    }
+
+    function addTicket() {
+      if(event && event.type === 'touchend') event.preventDefault();
+      const type = document.getElementById('lotto-type').value;
+      const startDate = document.getElementById('start-date').value;
+      const duration = parseInt(document.getElementById('check-duration').value);
+      const { zone1, zone2 } = currentSelection;
+      
+      let req1 = 6;
+      if (type === '539') req1 = 5;
+      
+      if (zone1.length < req1) { alert(`請選滿 ${req1} 個號碼`); return; }
+      if (type === 'power' && zone2.length < 1) { alert("請選擇第二區號碼"); return; }
+
+      const ticketId = Date.now();
+      ticketsToCheck.push({
+        id: ticketId,
+        type: type,
+        startDate: startDate,
+        duration: duration,
+        nums: [...zone1].sort((a,b)=>a-b),
+        special: zone2.length > 0 ? zone2[0] : null
+      });
+
+      renderTicketList();
+      closeModal();
+    }
+
+    function removeTicket(id) {
+      if(event && event.type === 'touchend') event.preventDefault();
+      ticketsToCheck = ticketsToCheck.filter(t => t.id !== id);
+      renderTicketList();
+    }
+
+    function renderTicketList() {
+      const container = document.getElementById('ticket-list');
+      const btnCheck = document.getElementById('btn-start-check');
+      container.innerHTML = "";
+
+      if (ticketsToCheck.length > 0) {
+        btnCheck.style.display = 'block';
+        ticketsToCheck.forEach(t => {
+          let typeName = t.type === 'big' ? '大樂透' : (t.type === 'power' ? '威力彩' : '今彩539');
+          let typeClass = 'border-' + t.type;
+          
+          let numsHtml = t.nums.map(n => `<span class="user-ball" style="border:none; background:#eee;">${formatNum(n)}</span>`).join('');
+          if (t.special) numsHtml += `<span class="user-ball" style="background:#d32f2f; color:white;">${t.special}</span>`;
+          
+          container.innerHTML += `
+            <div class="ticket-item ${typeClass}" id="ticket-${t.id}">
+              <div class="ticket-header">
+                <span>${typeName}</span>
+                <div class="btn-remove" onclick="removeTicket(${t.id})" ontouchend="removeTicket(${t.id})">×</div>
+              </div>
+              <div class="ticket-meta">
+                <span>起始: ${t.startDate}</span>
+                <span class="badge-period">連續 ${t.duration} 期</span>
+              </div>
+              <div class="ticket-nums">${numsHtml}</div>
+              
+              <div class="result-summary" style="margin-top:15px; font-weight:bold; color:#999; font-size:16px;">尚未兌獎</div>
+              <div class="check-result-container" id="result-${t.id}"></div>
+              <button class="toggle-result-btn" style="width:100%; margin-top:8px; padding:8px; background:#f0f0f0; border:none; display:none; border-radius:4px; font-weight:bold;" onclick="toggleResult(${t.id}, this)" ontouchend="toggleResult(${t.id}, this)">▼ 展開結果</button>
+            </div>
+          `;
+        });
+      } else {
+        btnCheck.style.display = 'none';
+        container.innerHTML = `<div style="text-align:center; color:#ccc; padding:30px;">尚未加入號碼<br>請點擊上方按鈕新增</div>`;
+      }
+    }
+
+    function runCheck() {
+      if(event && event.type === 'touchend') event.preventDefault();
+      if (!globalData.big) return;
+
+      ticketsToCheck.forEach(t => {
+        const dataList = globalData[t.type];
