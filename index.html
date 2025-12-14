@@ -194,8 +194,7 @@
   <button id="btn-start-check" class="btn-check-all" onclick="runCheck()" ontouchend="runCheck()">開始對獎</button>
 
   <script>
-    // 這裡請確認您的 Google Script 網址是否正確
-    const API_URL = "https://script.google.com/macros/s/AKfycbz0pu2vQ_TvlsgXYZgAz2cFxbTlF8cmfuOdHzEYTgABiDE4SAQwj1Int2xhsd4lmexOPQ/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbzrDs-l5Pr6QCmZW6Fpfy0dTAIC-5ZWriYCmPIGrFcAzNFkokA_cBJZESrWg7NgOLWB8w/exec";
     
     let globalData = {};
     let currentSelection = { zone1: [], zone2: [] }; 
@@ -425,4 +424,108 @@
 
       ticketsToCheck.forEach(t => {
         const dataList = globalData[t.type];
+        let startIndex = dataList.findIndex(d => d.date === t.startDate);
+        if (startIndex === -1) {
+           document.querySelector(`#ticket-${t.id} .result-summary`).innerText = "錯誤：找不到起始日期";
+           return;
+        }
 
+        let resultsHTML = "";
+        let winCount = 0;
+
+        for (let i = 0; i < t.duration; i++) {
+          let targetIndex = startIndex - i;
+          if (targetIndex < 0) break;
+
+          const draw = dataList[targetIndex];
+          const targetNums = draw.nums;
+          const targetSpecial = draw.special;
+          
+          let matchCount = 0;
+          let spMatch = false;
+
+          let drawNumsStr = targetNums.map(n => formatNum(n)).join(" ");
+          if (targetSpecial !== null) drawNumsStr += ` + <span style="color:#d32f2f">${formatNum(targetSpecial)}</span>`;
+
+          let userBallsHtml = t.nums.map(n => {
+            let isWin = targetNums.includes(n);
+            if (isWin) matchCount++;
+            let winClass = isWin ? "win" : "";
+            if (t.type === 'big' && n === targetSpecial) { winClass = "win-sp"; matchCount += 0.5; }
+            return `<div class="user-ball ${winClass}">${formatNum(n)}</div>`;
+          }).join('');
+
+          if (t.type === 'power') {
+             if (t.special === targetSpecial) {
+               spMatch = true;
+               userBallsHtml += `<div class="user-ball win-sp">${formatNum(t.special)}</div>`;
+             } else {
+               userBallsHtml += `<div class="user-ball" style="border:1px dashed #999;">${formatNum(t.special)}</div>`;
+             }
+          }
+
+          let isWinTotal = (matchCount >= 3 || spMatch);
+          if(isWinTotal) winCount++;
+
+          resultsHTML += `
+            <div class="result-row-detailed">
+              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span style="font-weight:bold; color:#333;">${draw.date}</span>
+                <span style="color:#d32f2f; font-weight:bold;">${isWinTotal ? '中獎' : ''}</span>
+              </div>
+              <div style="font-size:14px; color:#555; margin-bottom:5px;">開出: <span style="font-family:monospace; font-weight:bold;">${drawNumsStr}</span></div>
+              <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center;">
+                <span style="font-size:14px; color:#555;">選號:</span>
+                ${userBallsHtml}
+              </div>
+            </div>
+          `;
+        }
+
+        const ticketEl = document.getElementById(`ticket-${t.id}`);
+        ticketEl.querySelector('.result-summary').innerText = `共對 ${t.duration} 期，其中 ${winCount} 期中獎`;
+        ticketEl.querySelector('.result-summary').style.color = winCount > 0 ? "#d32f2f" : "#333";
+        
+        const container = document.getElementById(`result-${t.id}`);
+        container.innerHTML = resultsHTML;
+        
+        const btn = ticketEl.querySelector('.toggle-result-btn');
+        btn.style.display = 'block';
+        btn.innerHTML = '▼ 展開詳細結果';
+        container.style.display = 'none';
+      });
+      
+      alert("對獎完成！");
+    }
+
+    function toggleResult(id, btn) {
+      if(event && event.type === 'touchend') event.preventDefault();
+      const container = document.getElementById(`result-${id}`);
+      if (container.style.display === 'block') {
+        container.style.display = 'none';
+        btn.innerHTML = '▼ 展開詳細結果';
+      } else {
+        container.style.display = 'block';
+        btn.innerHTML = '▲ 收起詳細結果';
+      }
+    }
+
+    function toggleHistory(btn) {
+      if(event && event.type === 'touchend') event.preventDefault();
+      const card = btn.closest('.card');
+      const area = card.querySelector('.history-area');
+      if (area.style.display === 'block') {
+        area.style.display = 'none';
+        btn.textContent = '+';
+        btn.classList.remove('expanded');
+      } else {
+        area.style.display = 'block';
+        btn.textContent = '-';
+        btn.classList.add('expanded');
+      }
+    }
+
+    function formatNum(n) { return n < 10 ? '0' + Number(n) : n; }
+  </script>
+</body>
+</html>
