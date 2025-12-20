@@ -147,7 +147,7 @@
 
   <script>
     // ★★★ 步驟 3：請將這裡換成您剛剛在 GAS 取得的網址 ★★★
-    const API_URL = "請將您的_GAS_Web_App_URL_貼在這裡";
+    const API_URL = "https://script.google.com/macros/s/AKfycbziYdz8SqJbqW491B2su3zRHSpif4FkM2YuNAtGKeaECFJNvWSa8BEqx1Me1VSrTRm1wQ/exec";
     
     let globalData = {};
     let currentSelection = { zone1: [], zone2: [] }; 
@@ -399,4 +399,27 @@
           let isWinTotal = (matchCount >= 3 || spMatch); if(isWinTotal) winCount++;
           resultsHTML += `<div class="result-row-detailed"><div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span style="font-weight:bold; color:#333;">${draw.date}</span><span style="color:#d32f2f; font-weight:bold;">${isWinTotal ? '中獎' : ''}</span></div><div style="font-size:14px; color:#555; margin-bottom:5px;">開出: <span style="font-family:monospace; font-weight:bold;">${drawNumsStr}</span></div><div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center;"><span style="font-size:14px; color:#555;">選號:</span>${userBallsHtml}</div></div>`;
         }
-        const ticketEl
+        const ticketEl = document.getElementById(`ticket-${t.id}`);
+        ticketEl.querySelector('.result-summary').innerText = `兌獎結果：${winCount > 0 ? '恭喜中獎！' : '未中獎'}`;
+        ticketEl.querySelector('.result-summary').style.color = winCount > 0 ? "#d32f2f" : "#333";
+        const container = document.getElementById(`result-${t.id}`); container.innerHTML = resultsHTML;
+        const btn = ticketEl.querySelector('.toggle-result-btn'); btn.style.display = 'block'; btn.innerHTML = '▼ 展開詳細結果'; container.style.display = 'none';
+      });
+      alert("對獎完成！");
+    }
+    function toggleResult(id, btn) {
+      if(event && event.type === 'touchend') event.preventDefault();
+      const container = document.getElementById(`result-${id}`);
+      if (container.style.display === 'block') { container.style.display = 'none'; btn.innerHTML = '▼ 展開詳細結果'; }
+      else { container.style.display = 'block'; btn.innerHTML = '▲ 收起詳細結果'; }
+    }
+    function toggleHistory(btn) {
+      if(event && event.type === 'touchend') event.preventDefault();
+      const card = btn.closest('.card'); const area = card.querySelector('.history-area');
+      if (area.style.display === 'block') { area.style.display = 'none'; btn.textContent = '+'; btn.classList.remove('expanded'); }
+      else { area.style.display = 'block'; btn.textContent = '-'; btn.classList.add('expanded'); }
+    }
+    function formatNum(n) { return n < 10 ? '0' + Number(n) : n; }
+  </script>
+</body>
+</html>
