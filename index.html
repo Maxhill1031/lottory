@@ -1,5 +1,200 @@
-<script>
-    // ★★★ 請務必確認這裡換成您最新的 Web App 網址 ★★★
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>樂透開獎 V18 (歷史放大版)</title>
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="樂透對獎">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1042/1042306.png">
+
+  <style>
+    /* --- 基礎設定 --- */
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Microsoft JhengHei', sans-serif; 
+      background: #f5f5f5; 
+      margin: 0; 
+      padding-top: env(safe-area-inset-top);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    
+    /* 導覽列 */
+    .navbar { background: #fff; display: flex; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .nav-btn { 
+      flex: 1; padding: 15px; text-align: center; cursor: pointer; 
+      color: #666; font-weight: bold; border:none; background:none;
+      border-bottom: 3px solid transparent; transition: 0.2s; font-size:16px;
+    }
+    .nav-btn.active { color: #d32f2f; border-bottom: 3px solid #d32f2f; background: #fff5f5; }
+    
+    .container { max-width: 600px; margin: 15px auto; padding: 0 10px; }
+    .page { display: none; padding-bottom: 100px; }
+    .page.active { display: block; animation: fadeIn 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* 卡片與球號 */
+    .card { background: #fff; border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .card-header { display: flex; align-items: center; padding: 12px 15px; background: #fff; border-bottom: 1px solid #f0f0f0; }
+    .toggle-icon { width: 30px; height: 30px; background: #f0f0f0; color: #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-weight: bold; font-size:18px; }
+    .toggle-icon.expanded { background: #333; color: #fff; }
+    .lotto-name { font-size: 18px; font-weight: bold; flex: 1; }
+    .latest-date { font-size: 14px; color: #888; }
+    .latest-nums { padding: 15px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .ball { width: 38px; height: 38px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #333; font-size: 16px; }
+    .ball.special { background: #d32f2f; color: white; }
+
+    /* ★★★ 歷史區域 (放大修改處) ★★★ */
+    .history-area { display: none; background: #fafafa; border-top: 1px solid #eee; padding: 10px 15px; }
+    .hist-row { 
+        display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; 
+        font-size: 18px; /* 文字放大 */
+    }
+    .hist-date { 
+        width: 105px; /* 寬度加寬以免折行 */
+        color: #666; font-weight:bold; 
+    }
+    .hist-balls { display: flex; gap: 8px; /* 間距拉大 */ }
+    .s-ball { 
+        width: 30px; height: 30px; /* 球變大 (原本24) */
+        background: #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+        font-size: 15px; /* 球內數字變大 (原本12) */
+        font-weight:bold; 
+    }
+    .s-ball.sp { background: #ffcdd2; color: #d32f2f; }
+    /* ★★★ 修改結束 ★★★ */
+
+    /* 兌獎區 */
+    .action-bar { padding: 15px; background: #fff; margin-bottom: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; }
+    .btn-open-modal { width: 100%; padding: 15px; background: #fff; border: 2px dashed #999; border-radius: 8px; color: #555; font-size: 18px; font-weight:bold; }
+    
+    /* V18 清單字體放大區 */
+    .ticket-item { background: #fff; border-left: 6px solid #ddd; padding: 18px; border-radius: 8px; margin-bottom: 12px; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.08); }
+    .ticket-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: bold; color: #333; font-size: 18px; }
+    .ticket-meta { font-size: 15px; color: #666; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
+    .badge-period { background: #ffebee; color: #d32f2f; padding: 4px 8px; border-radius: 4px; font-size: 13px; font-weight: bold; }
+    .ticket-nums { display: flex; flex-wrap: wrap; gap: 8px; margin-top:5px; }
+    
+    .btn-remove { position: absolute; top: 15px; right: 15px; width: 32px; height: 32px; background: #eee; border-radius: 50%; text-align: center; line-height: 32px; color: #999; font-weight: bold; font-size: 18px; }
+    
+    /* 顏色標記 */
+    .border-big { border-left-color: #fbc02d; }
+    .border-power { border-left-color: #4caf50; }
+    .border-539 { border-left-color: #d32f2f; }
+
+    /* 彈窗 */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; justify-content: center; align-items: flex-end; }
+    .modal-content { background: #fff; width: 100%; max-width: 600px; height: 90vh; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; }
+    .modal-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .modal-body { flex: 1; overflow-y: auto; padding: 15px; padding-bottom: 50px; }
+    .modal-footer { padding: 15px; border-top: 1px solid #eee; text-align: center; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+
+    /* 選號球 */
+    .ball-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 20px; }
+    .select-ball { aspect-ratio: 1; border-radius: 50%; background: #fff; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #333; font-weight: bold; }
+    .select-ball.selected { background: #d32f2f; color: white; border-color: #b71c1c; transform: scale(1.1); }
+    .select-ball.selected-sp { background: #ff9800; color: white; border-color: #f57c00; }
+
+    /* 結果區 */
+    .check-result-container { display: none; margin-top: 15px; border-top: 1px dashed #ddd; padding-top: 15px; background: #fafafa; border-radius: 5px; }
+    .result-row-detailed { padding: 12px; border-bottom: 1px solid #eee; font-size: 15px; }
+    
+    .user-ball { 
+      width: 34px; height: 34px; 
+      border-radius: 50%; background: #fff; border: 1px solid #ccc; color: #555; 
+      display: flex; align-items: center; justify-content: center; 
+      font-weight: bold; font-size: 16px; 
+      margin-right: 2px; 
+    }
+    .user-ball.win { background: #d32f2f; color: white; border-color: #b71c1c; }
+    .user-ball.win-sp { background: #ff9800; color: white; border-color: #f57c00; }
+
+    .btn-confirm { width: 100%; padding: 15px; background: #2196f3; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; }
+    
+    .btn-check-all { 
+      width: 100%; padding: 15px; background: #d32f2f; color: white; border: none; 
+      font-size: 20px; font-weight: bold; position: fixed; bottom: 0; left: 0; z-index: 100; 
+      display: none; padding-bottom: calc(15px + env(safe-area-inset-bottom)); 
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .loading { text-align: center; padding: 40px; color: #999; }
+    select { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 15px; background: #fff; -webkit-appearance: none; }
+  </style>
+</head>
+<body>
+
+  <div class="navbar">
+    <button class="nav-btn active" onclick="switchPage('latest')" ontouchend="switchPage('latest')">最新開獎</button>
+    <button class="nav-btn" onclick="switchPage('check')" ontouchend="switchPage('check')">選號兌獎</button>
+  </div>
+
+  <div id="latest" class="page active container">
+    <div id="loading" class="loading">正在連線至資料庫...</div>
+    <div id="cards-container"></div>
+  </div>
+
+  <div id="check" class="page container">
+    <div class="action-bar">
+      <button class="btn-open-modal" onclick="openModal()" ontouchend="openModal()">
+        <span style="font-size:24px; color:#2196f3;">+</span> 加入對獎號碼
+      </button>
+    </div>
+    <div id="ticket-list" class="list-area">
+      <div style="text-align:center; color:#ccc; padding:30px;">
+        尚未加入號碼<br>請點擊上方按鈕新增
+      </div>
+    </div>
+  </div>
+
+  <div id="selector-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">設定對獎條件</span>
+        <button onclick="closeModal()" ontouchend="closeModal()" style="border:none; background:none; font-size:24px; padding:10px;">×</button>
+      </div>
+      <div class="modal-body">
+        <label style="display:block; margin-bottom:5px; color:#666;">1. 選擇彩種：</label>
+        <select id="lotto-type" onchange="initSelector()">
+          <option value="big">大樂透 (49選6)</option>
+          <option value="power">威力彩 (38樂合+第二區)</option>
+          <option value="539">今彩539 (39選5)</option>
+        </select>
+        
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <div style="flex:2;">
+            <label style="display:block; margin-bottom:5px; color:#666;">2. 起始日期：</label>
+            <select id="start-date"><option>載入中...</option></select>
+          </div>
+          <div style="flex:1;">
+            <label style="display:block; margin-bottom:5px; color:#666;">3. 連續：</label>
+            <select id="check-duration">
+              <option value="1">1 期</option>
+              <option value="2">2 期</option>
+              <option value="5">5 期</option>
+              <option value="10">10 期</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:15px; margin-bottom:10px; font-weight:bold;">4. 選擇號碼：</div>
+        <div id="zone-1" class="ball-grid"></div>
+        <div id="zone-2-wrapper" style="display:none;">
+          <div style="margin:15px 0 5px; border-top:1px dashed #ddd; padding-top:10px;">第二區：</div>
+          <div id="zone-2" class="ball-grid"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-confirm" onclick="addTicket()" ontouchend="addTicket()">確認加入清單</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="btn-start-check" class="btn-check-all" onclick="runCheck()" ontouchend="runCheck()">開始對獎</button>
+
+  <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbziYdz8SqJbqW491B2su3zRHSpif4FkM2YuNAtGKeaECFJNvWSa8BEqx1Me1VSrTRm1wQ/exec";
     
     let globalData = {};
@@ -10,86 +205,15 @@
       fetchData();
     });
 
-    // --- 1. 讀取資料 (包含開獎號碼 + 您的存檔) ---
     async function fetchData() {
       try {
-        document.getElementById('loading').innerText = "正在同步雲端資料...";
         const res = await fetch(API_URL);
         const data = await res.json();
-        
         globalData = data;
-        
-        // ★ 關鍵：載入您在 Sheet 裡的存檔 (userData)
-        if (data.userData && Array.isArray(data.userData)) {
-            // 把雲端資料轉換成網頁用的格式
-            ticketsToCheck = data.userData.map(item => ({
-                id: item.id,            // 這是雲端上的唯一 ID
-                type: item.type,
-                startDate: item.date,   // 這裡我們把雲端的購買日當作起始日
-                duration: 1,            // 預設雲端回來的都是對 1 期 (您可以依需求改)
-                nums: item.nums.split(",").map(Number), // 轉回數字陣列
-                special: null // 簡化處理，若有存特別號需另外解析，目前 v7 範例是用逗號分隔字串
-            }));
-            
-            // v7 存檔時我們把號碼變成字串存，這裡做個修正，
-            // 讓它能正確讀取特別號 (如果是威力彩/大樂透)
-            // 重新解析 userData 的 nums
-            ticketsToCheck = data.userData.map(item => {
-                let numArr = String(item.nums).split(",").map(n => Number(n.trim()));
-                let sp = null;
-                
-                // 如果是威力彩或大樂透，最後一個數字通常是特別號/第二區
-                // (前提是我們存檔時有把特別號放進去)
-                if (item.type === 'power' || item.type === 'big') {
-                    // 這裡假設存檔時最後一顆是特別號
-                    // 若您的存檔邏輯不同，這裡要調整
-                }
-                
-                return {
-                    id: item.id,
-                    type: item.type,
-                    startDate: item.date,
-                    duration: 1, // 預設讀回來是對當期，若要連續期數需在存檔時也存 duration
-                    nums: numArr, 
-                    special: null // 暫時設 null，視您的存檔格式而定
-                };
-            });
-            
-            // ★ 修正：為了讓 v7 簡單化，我們在網頁端存的時候，
-            // 直接把「一般號碼」存成 nums 字串。
-            // 這裡直接讀取即可。
-             ticketsToCheck = data.userData.map(item => {
-                 // 解析資料庫回傳的 CSV 字串 "1,2,3,4,5"
-                 let rawNums = String(item.nums).split(",").map(Number);
-                 
-                 // 分離特別號邏輯 (v7 範例是全部混在一起存)
-                 // 為了相容，我們假設：
-                 // 539: 5個號碼
-                 // 大樂透/威力彩: 前面是號碼，最後一個陣列元素看情況
-                 // 比較好的做法是存檔時就分開，但為了不改 GAS，我們這裡做個簡單判斷
-                 
-                 let finalNums = rawNums;
-                 let finalSp = null;
-
-                 // 這裡我們改用簡單方式：讀取後直接顯示
-                 return {
-                     id: item.id,
-                     type: item.type,
-                     startDate: item.date,
-                     duration: 1, 
-                     nums: finalNums, 
-                     special: finalSp 
-                 };
-             });
-        }
-
         document.getElementById('loading').style.display = 'none';
         renderLatest(data);
-        renderTicketList(); // 渲染您的購買清單
-
       } catch (err) {
-        console.error(err);
-        document.getElementById('loading').innerHTML = `<div style="color:red;">讀取失敗，請檢查網路</div>`;
+        document.getElementById('loading').innerHTML = `<div style="color:red;">讀取失敗</div>`;
       }
     }
 
@@ -127,7 +251,6 @@
       container.appendChild(div);
     }
 
-    // --- 切換分頁 ---
     function switchPage(pageId) {
       if(event && event.type === 'touchend') event.preventDefault();
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -140,7 +263,6 @@
       document.getElementById(pageId).classList.add('active');
     }
 
-    // --- Modal 相關 ---
     function openModal() {
       if(event && event.type === 'touchend') event.preventDefault();
       if(!globalData.big) { alert("資料載入中，請稍候"); return; }
@@ -226,7 +348,6 @@
       }
     }
 
-    // --- 2. 新增號碼 (發送 POST 到 Sheet) ---
     function addTicket() {
       if(event && event.type === 'touchend') event.preventDefault();
       const type = document.getElementById('lotto-type').value;
@@ -240,83 +361,24 @@
       if (zone1.length < req1) { alert(`請選滿 ${req1} 個號碼`); return; }
       if (type === 'power' && zone2.length < 1) { alert("請選擇第二區號碼"); return; }
 
-      // 組合號碼字串
-      let saveNums = [...zone1].sort((a,b)=>a-b);
-      if (zone2.length > 0) saveNums.push(zone2[0]); // 把特別號加在最後面
-      let numsStr = saveNums.join(",");
-
-      // UI 顯示 loading 效果
-      const btn = document.querySelector('.btn-confirm');
-      const originalText = btn.innerText;
-      btn.innerText = "儲存中...";
-      btn.disabled = true;
-
-      // 發送 POST 請求
-      fetch(API_URL, {
-        method: "POST",
-        // mode: "no-cors", // 注意：Google Script 跨域有時需要 no-cors，但這樣拿不到回傳。我們先試標準方式，若失敗則改用 redirect 處理
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-            action: "add",
-            date: startDate, // 這裡我們存「購買日/起始日」
-            type: type,
-            nums: numsStr
-        })
-      })
-      .then(res => res.json())
-      .then(result => {
-          if(result.status === 'success') {
-              alert("儲存成功！");
-              closeModal();
-              // 重新讀取資料以更新清單
-              fetchData(); 
-          } else {
-              alert("儲存失敗：" + result.message);
-          }
-      })
-      .catch(err => {
-          alert("連線錯誤，請稍後再試");
-          console.error(err);
-      })
-      .finally(() => {
-          btn.innerText = originalText;
-          btn.disabled = false;
+      const ticketId = Date.now();
+      ticketsToCheck.push({
+        id: ticketId,
+        type: type,
+        startDate: startDate,
+        duration: duration,
+        nums: [...zone1].sort((a,b)=>a-b),
+        special: zone2.length > 0 ? zone2[0] : null
       });
+
+      renderTicketList();
+      closeModal();
     }
 
-    // --- 3. 刪除號碼 (發送 POST 到 Sheet) ---
     function removeTicket(id) {
       if(event && event.type === 'touchend') event.preventDefault();
-      
-      if(!confirm("確定要刪除這筆資料嗎？(將同步刪除雲端存檔)")) return;
-
-      // 樂觀更新 (先從畫面移除，感覺比較快)
-      const oldList = [...ticketsToCheck];
       ticketsToCheck = ticketsToCheck.filter(t => t.id !== id);
       renderTicketList();
-
-      fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-            action: "delete",
-            id: id
-        })
-      })
-      .then(res => res.json())
-      .then(result => {
-          if(result.status !== 'success') {
-              alert("雲端刪除失敗，資料將還原");
-              ticketsToCheck = oldList; // 還原
-              renderTicketList();
-          }
-      })
-      .catch(err => {
-          console.error("刪除連線錯誤", err);
-          ticketsToCheck = oldList; // 還原
-          renderTicketList();
-          alert("連線失敗，無法刪除");
-      });
     }
 
     function renderTicketList() {
@@ -330,35 +392,24 @@
           let typeName = t.type === 'big' ? '大樂透' : (t.type === 'power' ? '威力彩' : '今彩539');
           let typeClass = 'border-' + t.type;
           
-          let displayNums = [...t.nums];
-          let special = t.special;
-          
-          // 如果是威力彩/大樂透，且 special 是 null，嘗試從 nums 最後一個抓
-          if ((t.type === 'power' || t.type === 'big') && special === null && displayNums.length > 6) {
-             special = displayNums.pop();
-          }
-
-          let numsHtml = displayNums.map(n => `<span class="user-ball" style="border:none; background:#eee;">${formatNum(n)}</span>`).join('');
-          if (special) numsHtml += `<span class="user-ball" style="background:#d32f2f; color:white;">${special}</span>`;
-          
-          // 為了對獎邏輯，我們修正物件裡的 nums 與 special
-          t.nums = displayNums;
-          t.special = special;
+          let numsHtml = t.nums.map(n => `<span class="user-ball" style="border:none; background:#eee;">${formatNum(n)}</span>`).join('');
+          if (t.special) numsHtml += `<span class="user-ball" style="background:#d32f2f; color:white;">${t.special}</span>`;
           
           container.innerHTML += `
             <div class="ticket-item ${typeClass}" id="ticket-${t.id}">
               <div class="ticket-header">
                 <span>${typeName}</span>
-                <div class="btn-remove" onclick="removeTicket('${t.id}')" ontouchend="removeTicket('${t.id}')">×</div>
+                <div class="btn-remove" onclick="removeTicket(${t.id})" ontouchend="removeTicket(${t.id})">×</div>
               </div>
               <div class="ticket-meta">
                 <span>起始: ${t.startDate}</span>
+                <span class="badge-period">連續 ${t.duration} 期</span>
               </div>
               <div class="ticket-nums">${numsHtml}</div>
               
               <div class="result-summary" style="margin-top:15px; font-weight:bold; color:#999; font-size:16px;">尚未兌獎</div>
               <div class="check-result-container" id="result-${t.id}"></div>
-              <button class="toggle-result-btn" style="width:100%; margin-top:8px; padding:8px; background:#f0f0f0; border:none; display:none; border-radius:4px; font-weight:bold;" onclick="toggleResult('${t.id}', this)" ontouchend="toggleResult('${t.id}', this)">▼ 展開結果</button>
+              <button class="toggle-result-btn" style="width:100%; margin-top:8px; padding:8px; background:#f0f0f0; border:none; display:none; border-radius:4px; font-weight:bold;" onclick="toggleResult(${t.id}, this)" ontouchend="toggleResult(${t.id}, this)">▼ 展開結果</button>
             </div>
           `;
         });
@@ -368,39 +419,24 @@
       }
     }
 
-    // --- 對獎功能 (維持不變，但注意 ID 現在是字串) ---
     function runCheck() {
       if(event && event.type === 'touchend') event.preventDefault();
       if (!globalData.big) return;
 
       ticketsToCheck.forEach(t => {
         const dataList = globalData[t.type];
-        if(!dataList) return;
-
         let startIndex = dataList.findIndex(d => d.date === t.startDate);
-        // 如果找不到該日期，嘗試找最接近的（或者是當期）
         if (startIndex === -1) {
-             // 簡單處理：如果找不到，顯示提示
-           document.querySelector(`#ticket-${t.id} .result-summary`).innerText = "日期過舊或未開獎";
+           document.querySelector(`#ticket-${t.id} .result-summary`).innerText = "錯誤：找不到起始日期";
            return;
         }
 
         let resultsHTML = "";
         let winCount = 0;
-        let duration = t.duration || 1; // 預設 1 期
 
-        for (let i = 0; i < duration; i++) {
-          let targetIndex = startIndex - i; // 往未來找 (index越小越新) ?? 不，Sheet是新的在上面(index 0)，所以往後找是未來? 
-          // 修正：Sheet 排序是 [最新, ..., 最舊]
-          // 如果使用者買 "12/19"，想對 12/19, 12/20... 
-          // 那應該是 index 往 0 的方向走 (index 減小)
-          
-          // 但通常「連續期數」是指「購買日之後的連續幾期」。
-          // 假設買 12/17，連續 3 期 -> 12/17, 12/18, 12/19
-          // 12/17 是 index N。 12/18 是 index N-1。
-          
-          targetIndex = startIndex - i;
-          if (targetIndex < 0) break; // 超出最新一期
+        for (let i = 0; i < t.duration; i++) {
+          let targetIndex = startIndex - i;
+          if (targetIndex < 0) break;
 
           const draw = dataList[targetIndex];
           const targetNums = draw.nums;
@@ -427,9 +463,6 @@
              } else {
                userBallsHtml += `<div class="user-ball" style="border:1px dashed #999;">${formatNum(t.special)}</div>`;
              }
-          } else if (t.type === 'big' && t.special) {
-             // 大樂透一般沒有選特別號，但如果有存
-             userBallsHtml += `<div class="user-ball">${formatNum(t.special)}</div>`;
           }
 
           let isWinTotal = (matchCount >= 3 || spMatch);
@@ -451,7 +484,7 @@
         }
 
         const ticketEl = document.getElementById(`ticket-${t.id}`);
-        ticketEl.querySelector('.result-summary').innerText = `兌獎結果：${winCount > 0 ? '恭喜中獎！' : '未中獎'}`;
+        ticketEl.querySelector('.result-summary').innerText = `共對 ${t.duration} 期，其中 ${winCount} 期中獎`;
         ticketEl.querySelector('.result-summary').style.color = winCount > 0 ? "#d32f2f" : "#333";
         
         const container = document.getElementById(`result-${t.id}`);
@@ -495,3 +528,6 @@
 
     function formatNum(n) { return n < 10 ? '0' + Number(n) : n; }
   </script>
+</body>
+</html>
+
